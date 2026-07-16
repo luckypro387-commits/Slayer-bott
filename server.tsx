@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import * as satoriModule from "satori";
 
 let satori: any;
@@ -17,6 +16,18 @@ if (typeof rawSatori.default === "function") {
 import { Resvg } from "@resvg/resvg-js";
 import React from "react";
 import { parseMotd, MotdSegment } from "./src/utils/motdParser.ts";
+
+// Safely determine directory name for both ESM and CJS environments
+function getDirname(): string {
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch (err) {
+    // Ignore
+  }
+  return typeof __dirname !== "undefined" ? __dirname : process.cwd();
+}
 
 export const app = express();
 const PORT = 3000;
@@ -74,32 +85,88 @@ const DEFAULT_ICON_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAA
 
 let monocraftFontBuffer: Buffer | null = null;
 
+async function loadGoogleFontTtf(fontName: string): Promise<Buffer> {
+  try {
+    const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}`;
+    console.log(`Querying Google Fonts CSS for ${fontName}...`);
+    const cssRes = await fetch(cssUrl);
+    if (!cssRes.ok) throw new Error(`Failed to fetch CSS for ${fontName}: ${cssRes.status}`);
+    const cssText = await cssRes.text();
+    const match = cssText.match(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+\.ttf)\)/);
+    if (!match) {
+      throw new Error(`No TTF font URL found in CSS for ${fontName}`);
+    }
+    const ttfUrl = match[1];
+    console.log(`Downloading ${fontName} TTF from: ${ttfUrl}...`);
+    const ttfRes = await fetch(ttfUrl);
+    if (!ttfRes.ok) throw new Error(`Failed to fetch TTF for ${fontName}: ${ttfRes.status}`);
+    const arrayBuffer = await ttfRes.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (err: any) {
+    console.error(`Dynamic load of Google Font ${fontName} failed:`, err.message);
+    throw err;
+  }
+}
+
 // Download a crisp pixel/Minecraft font for Satori text rendering
 async function getFont(): Promise<Buffer> {
   if (monocraftFontBuffer) return monocraftFontBuffer;
+
+  // 1. Try reading the updated local Minecraft font first
   try {
-    const fontUrl = "https://fonts.cdnfonts.com/s/36662/MinecraftTen-VGORe.woff";
-    console.log(`Downloading genuine Minecraft font from CDN: ${fontUrl}...`);
+    const pathsToTry = [
+      path.join(process.cwd(), "Font", "MinecraftTen-VGORe.ttf"),
+      path.join(getDirname(), "..", "Font", "MinecraftTen-VGORe.ttf"),
+      path.join(getDirname(), "Font", "MinecraftTen-VGORe.ttf"),
+    ];
+
+    for (const p of pathsToTry) {
+      if (fs.existsSync(p)) {
+        const buffer = fs.readFileSync(p);
+        if (buffer.length > 0) {
+          monocraftFontBuffer = buffer;
+          console.log(`Loaded genuine Minecraft font from local TTF successfully: ${p}`);
+          return monocraftFontBuffer;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Failed to read local Minecraft font:", err);
+  }
+
+  // 2. Try online download of the genuine MinecraftTen font from the working repository
+  try {
+    const fontUrl = "https://raw.githubusercontent.com/luckypro387-commits/Mc-fonts/main/MinecraftTen-VGORe.ttf";
+    console.log(`Downloading working Minecraft font from repository: ${fontUrl}...`);
     const res = await fetch(fontUrl);
-    if (!res.ok) throw new Error("Failed to fetch Minecraft font from CDN");
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const arrayBuffer = await res.arrayBuffer();
     monocraftFontBuffer = Buffer.from(arrayBuffer);
-    console.log("Genuine Minecraft font downloaded and cached successfully.");
+    console.log("Cached newly downloaded working MinecraftTen font successfully.");
     return monocraftFontBuffer;
-  } catch (err) {
-    console.error("Minecraft font load failed, trying Press Start 2P secondary fallback font...", err);
-    try {
-      const fallbackUrl = "https://cdn.jsdelivr.net/npm/@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff";
-      const res = await fetch(fallbackUrl);
-      if (!res.ok) throw new Error("Failed to fetch Press Start 2P");
-      const arrayBuffer = await res.arrayBuffer();
-      monocraftFontBuffer = Buffer.from(arrayBuffer);
-      console.log("Cached fallback Press Start 2P font successfully.");
-      return monocraftFontBuffer;
-    } catch (fallbackErr) {
-      console.error("All font loads failed! Using empty buffer.", fallbackErr);
-      return Buffer.alloc(0);
-    }
+  } catch (err: any) {
+    console.error("Working MinecraftTen online fetch failed:", err.message);
+  }
+
+  // 3. Fallback to Pixelify Sans dynamically from Google Fonts
+  try {
+    console.log("Loading Pixelify Sans as Minecraft font fallback...");
+    monocraftFontBuffer = await loadGoogleFontTtf("Pixelify Sans");
+    console.log("Pixelify Sans font loaded and cached successfully.");
+    return monocraftFontBuffer;
+  } catch (err: any) {
+    console.error("Failed to load Pixelify Sans:", err.message);
+  }
+
+  // 4. Fallback to Press Start 2P dynamically from Google Fonts
+  try {
+    console.log("Loading Press Start 2P as ultimate pixel font fallback...");
+    monocraftFontBuffer = await loadGoogleFontTtf("Press Start 2P");
+    console.log("Press Start 2P loaded and cached successfully.");
+    return monocraftFontBuffer;
+  } catch (err: any) {
+    console.error("All pixel fonts failed! Returning empty buffer.", err.message);
+    return Buffer.alloc(0);
   }
 }
 
@@ -529,11 +596,7 @@ let fredokaFontBuffer: Buffer | null = null;
 async function getPacificoFont(): Promise<Buffer> {
   if (pacificoFontBuffer) return pacificoFontBuffer;
   try {
-    const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/pacifico/files/pacifico-latin-400-normal.woff";
-    console.log(`Downloading Pacifico font from CDN: ${fontUrl}...`);
-    const res = await fetch(fontUrl);
-    if (!res.ok) throw new Error("Failed to fetch Pacifico font");
-    pacificoFontBuffer = Buffer.from(await res.arrayBuffer());
+    pacificoFontBuffer = await loadGoogleFontTtf("Pacifico");
     console.log("Pacifico font loaded successfully.");
     return pacificoFontBuffer;
   } catch (err) {
@@ -545,11 +608,8 @@ async function getPacificoFont(): Promise<Buffer> {
 async function getFredokaFont(): Promise<Buffer> {
   if (fredokaFontBuffer) return fredokaFontBuffer;
   try {
-    const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/fredoka/files/fredoka-latin-400-normal.woff";
-    console.log(`Downloading Fredoka font from CDN: ${fontUrl}...`);
-    const res = await fetch(fontUrl);
-    if (!res.ok) throw new Error("Failed to fetch Fredoka font");
-    fredokaFontBuffer = Buffer.from(await res.arrayBuffer());
+    // Fredoka One is deprecated, so we load Fredoka which looks identical and is fully supported
+    fredokaFontBuffer = await loadGoogleFontTtf("Fredoka");
     console.log("Fredoka font loaded successfully.");
     return fredokaFontBuffer;
   } catch (err) {
@@ -949,6 +1009,7 @@ app.get("/api/science-banner", async (req, res) => {
 async function startServer() {
   // Configure Vite middleware for dev mode, or serve build outputs in prod
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
