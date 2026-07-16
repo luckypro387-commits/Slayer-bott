@@ -18,7 +18,7 @@ import { Resvg } from "@resvg/resvg-js";
 import React from "react";
 import { parseMotd, MotdSegment } from "./src/utils/motdParser.ts";
 
-const app = express();
+export const app = express();
 const PORT = 3000;
 
 // Simple disk-persisted and in-memory cache for server icons
@@ -967,4 +967,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}

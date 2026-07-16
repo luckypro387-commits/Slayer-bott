@@ -1,8 +1,6 @@
 {
-  "name": "Remix: MineCard API",
-  "description": "Generate dynamic Minecraft server status cards via API with a preview dashboard and instant embed code generation.",
+  "name": "Minecraft Server Status Card Generator",
+  "description": "Exposes a public image-generation API endpoint and dynamic dashboard to generate high-fidelity multiplayer list cards.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
