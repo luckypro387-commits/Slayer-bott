@@ -11,10 +11,7 @@
   ],
   "functions": {
     "api/index.ts": {
-      "includeFiles": [
-        "node_modules/@resvg/resvg-js*/**",
-        "Font/**"
-      ]
+      "includeFiles": "{node_modules/@resvg/resvg-js*/**,Font/**}"
     }
   }
 }
