@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -22,9 +22,7 @@ jobs:
       - name: Extract ZIP Files
         run: |
           shopt -s nullglob
-
           for zip in *.zip; do
-            echo "Extracting $zip"
             unzip -o "$zip"
           done
 
@@ -32,17 +30,20 @@ jobs:
         run: |
           find . -type d -name ".git" ! -path "./.git" -exec rm -rf {} + || true
 
-      - name: Commit and Push Changes
+      - name: Commit Changes
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add .
 
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "No changes"
             exit 0
           fi
 
           git commit -m "Auto extract ZIP files"
-          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Push Changes
+        run: |
+          git push origin HEAD:${GITHUB_REF_NAME}
