@@ -5,30 +5,44 @@ on:
     paths:
       - "*.zip"
 
+permissions:
+  contents: write
+
 jobs:
   unzip:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
-      - name: Extract ZIPs to root
+      - name: Extract ZIP Files
         run: |
           shopt -s nullglob
+
           for zip in *.zip; do
+            echo "Extracting $zip"
             unzip -o "$zip"
           done
 
-      - name: Commit changes
+      - name: Remove Nested Git Repositories
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          find . -type d -name ".git" ! -path "./.git" -exec rm -rf {} + || true
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add .
-          git diff --staged --quiet || git commit -m "Auto extract ZIP files"
-          git push
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Auto extract ZIP files"
+          git push origin HEAD:${{ github.ref_name }}
